@@ -5,9 +5,11 @@
 -- Some comments
 --
 
-data     Foo      =      Bar    |     Baz
+data     Foo     a b =      Bar !a   |     Baz [
+  b]
 
 data        Booly  =
+                            forall a.
                     Yay   
                    
                    
@@ -22,7 +24,7 @@ data        Booly  =
          !(m ())
          
          
-         deriving (Eq, Ord, Show)
+    deriving (Eq, Ord, Show)
 
 foo :: Int -> Foo
 foo = bar

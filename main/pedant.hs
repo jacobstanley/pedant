@@ -65,29 +65,11 @@ run path = do
       putStrLn $ "=== " <> path <> " ==="
       putStr src
 
---fmt2 :: HsModule RdrName -> Transform (HsModule RdrName)
---fmt2 m = do
---  let
---    go ann =
---      ann { annEntryDelta = goDelta $ annEntryDelta ann }
---
---    goDelta (DP (row, col)) =
---      if row == 1 && col > 0 then
---        DP (1, 2)
---      else
---        DP (row, col)
---
---  modifyAnnsT (fmap go)
---  pure m
-
-dp :: Int -> Int -> DeltaPos
-dp row col =
-  DP (row, col)
+------------------------------------------------------------------------
 
 formatModule :: Located (HsModule RdrName) -> Transform (Located (HsModule RdrName))
-formatModule m0 = do
-  m <- formatDecls m0
-  pure m
+formatModule =
+  formatDecls
 
 formatDecls :: HasDecls t => t -> Transform t
 formatDecls hd = do
@@ -107,14 +89,18 @@ formatDecl ldecl@(L loc decl0) =
 formatTyClDecl :: LHsDecl RdrName -> TyClDecl RdrName -> Transform (TyClDecl RdrName)
 formatTyClDecl ld = \case
   DataDecl lname vars defn cusck fvs -> do
-    setDPT AnnData ld (dp 0 0)
-    setEntryDPT lname (dp 0 1)
-    setDPT AnnEqual ld (dp 0 1)
+
+    -- data <lname> =
+    setDPT AnnData ld $ delta 0 0
+    setEntryDPT lname $ delta 0 1
+    setDPT AnnEqual ld $ delta 0 1
+
     DataDecl lname
       <$> formatHsQTyVars vars
       <*> formatDataDefn defn
       <*> pure cusck
       <*> pure fvs
+
   decl -> do
     pure decl
 
@@ -125,11 +111,13 @@ formatHsQTyVars = \case
     pure $ HsQTvs impl expl dep
 
 formatHsTyVarBndr :: LHsTyVarBndr RdrName -> Transform (LHsTyVarBndr RdrName)
-formatHsTyVarBndr (L loc var) =
+formatHsTyVarBndr lvar@(L loc var) =
   L loc <$>
   case var of
     UserTyVar lname -> do
+      setEntryDPT lvar $ delta 0 1
       pure $ UserTyVar lname
+
     KindedTyVar lname lkind -> do
       pure $ KindedTyVar lname lkind
 
@@ -146,13 +134,16 @@ formatConDecl ix lcon@(L loc con0) =
   case con0 of
     ConDeclGADT names typ doc ->
       pure $ ConDeclGADT names typ doc
-    ConDeclH98 name qvars ctx details doc -> do
-      if ix == 0 then do
-        setEntryDPT lcon (dp 1 4)
-      else do
-        setEntryDPT lcon (dp 0 1)
 
-      setDPT AnnVbar lcon (dp 1 2)
+    ConDeclH98 name qvars ctx details doc -> do
+
+      -- | <lcon>
+      if ix == 0 then
+        setEntryDPT lcon $ delta 1 4
+      else
+        setEntryDPT lcon $ delta 0 1
+
+      setDPT AnnVbar lcon $ delta 1 2
 
       ConDeclH98 name qvars ctx
         <$> formatConDeclDetails details
@@ -164,18 +155,25 @@ formatConDeclDetails ::
 formatConDeclDetails = \case
   PrefixCon args ->
     PrefixCon <$> traverse formatLBangType args
+
   details -> do
     pure details
 
 formatLBangType :: LBangType RdrName -> Transform (LBangType RdrName)
 formatLBangType lbang = do
-  setEntryDPT lbang (dp 0 1)
+  setEntryDPT lbang $ delta 0 1
   pure lbang
 
 formatDeriving :: Located [LHsSigType RdrName] -> Transform (Located [LHsSigType RdrName])
 formatDeriving ld = do
-  setEntryDPT ld (dp 1 4)
+  setEntryDPT ld $ delta 1 4
   pure ld
+
+------------------------------------------------------------------------
+
+delta :: Int -> Int -> DeltaPos
+delta row col =
+  DP (row, col)
 
 setDPT :: Data a => AnnKeywordId -> Located a -> DeltaPos -> Transform ()
 setDPT kw loc pos =
